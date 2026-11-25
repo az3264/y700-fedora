@@ -3,9 +3,11 @@ armada_plasma_shell() {
 
     if grep -Eqs '^desktop_session[[:space:]]*=[[:space:]]*"armada-plasma\.desktop"' "${state}"; then
         echo desktop
-    else
-        # Missing, unset or raw upstream state follows the Mobile default.
+    elif grep -Eqs '^desktop_session[[:space:]]*=[[:space:]]*"armada-plasma-mobile\.desktop"' "${state}"; then
         echo mobile
+    else
+        # Missing, unset or raw upstream state follows the Desktop default.
+        echo desktop
     fi
 }
 
