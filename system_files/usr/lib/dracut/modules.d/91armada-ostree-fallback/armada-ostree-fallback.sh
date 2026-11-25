@@ -48,6 +48,27 @@ armada_bootcsum_for_deployment() {
 # ostree ranks its deployments in /boot/loader/entries: the highest "ostree-N"
 # entry is the one it boots. Print "<ostree karg> <csum>.<deployserial>" for it,
 # but only while it shares this boot image's kernel (same bootcsum).
+# Publish the stable /ostree/armada/<commit>.<serial> pointer for a deployment.
+# The sysroot is mounted read-only, so remount it only for the symlink write and
+# restore the read-only state afterwards.
+armada_write_root_binding() {
+    local osname=$1 deploy=$2 dir=/sysroot/ostree/armada remounted=0
+
+    mkdir -p "${dir}" 2>/dev/null || true
+    if ln -sfn "../deploy/${osname}/deploy/${deploy}" "${dir}/${deploy}" 2>/dev/null; then
+        [ -L "${dir}/${deploy}" ] && return 0
+    fi
+
+    if mount -o remount,rw /sysroot 2>/dev/null; then
+        remounted=1
+    fi
+    mkdir -p "${dir}" 2>/dev/null || true
+    ln -sfn "../deploy/${osname}/deploy/${deploy}" "${dir}/${deploy}" 2>/dev/null || true
+    [ "${remounted}" -eq 1 ] && mount -o remount,ro /sysroot 2>/dev/null
+
+    [ -L "${dir}/${deploy}" ]
+}
+
 armada_ostree_default_deployment() {
     local cmdline=$1 bound_path=$2 boot_device="" token name num
     local bound_deploy="" bound_bc="" best_num=-1 best_conf="" best_karg=""
@@ -152,11 +173,14 @@ if [ "${bound}" -eq 1 ]; then
             # shape this boot medium was built for.
             case "${karg}" in
                 /ostree/armada/*)
-                    mkdir -p /sysroot/ostree/armada 2>/dev/null || true
-                    if ln -sfn "../deploy/${osname}/deploy/${newer_deploy}" \
-                         "/sysroot/ostree/armada/${newer_deploy}" 2>/dev/null; then
+                    # The sysroot is mounted read-only; the stable pointer has
+                    # to exist in the sysroot itself so userspace validation can
+                    # canonicalize it.  Remount only for the symlink write.
+                    armada_write_root_binding "${osname}" "${newer_deploy}" || true
+                    if [ -L "/sysroot/ostree/armada/${newer_deploy}" ]; then
                         found="/ostree/armada/${newer_deploy}"
                     else
+                        log "cannot publish /ostree/armada/${newer_deploy}; using the bootlink pointer"
                         found=${newer%% *}
                     fi
                     ;;
