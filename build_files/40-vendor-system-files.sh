@@ -163,6 +163,7 @@ systemctl enable tb323fu-bluetooth-firmware.service
 # The user unit is enabled on every device; the helper itself exits 0 unless
 # the exact lenovo,baldur token and the exact LENOVOTB323FU card are present.
 systemctl --global enable tb323fu-speaker-gain.service
+systemctl enable armada-kshim-provision.service
 systemctl enable armada-session-default.service
 systemctl enable seatd.service
 systemctl enable armada-input-calibration.service

@@ -150,3 +150,18 @@ sudo /usr/libexec/armada/armada-kshim-state record-boot
 - 若以后要让 boot_a 保持不动，则需要运行时支持"本地未签名 generation"
   （重编 runtime + 一次性重刷），或在 `ARMADA_BOOT` 之外增加可写 generation。
 - TB323FU / TB710FU 不在本次范围（仅 TB322FC）。
+
+## 6. 自动 provision（EDL 输入就位时）
+
+新镜像内置 `armada-kshim-provision.service`（oneshot，已 enable）：
+
+- 当 `/var/lib/armada/kshimc-inputs/stock-boot.img` 与
+  `.../kShimC.bin` 同时存在、且 `/var/lib/armada/kshimc/config.json`
+  还不存在时，调用 `/usr/libexec/armada/armada-kshim-provision`；
+- 该脚本解析 `boot_a` 的 PARTUUID 后执行
+  `armada-kshim-state adopt --stock-boot … --runtime … --sign-key …`；
+- 成功后再由 `armada-bootimg-sync.service` 在每次部署 finalize 时自动
+  repack + 签名 boot_a。
+
+因此刷机方只需把这两个文件放进 `/var/lib/armada/kshimc-inputs/`（EDL 包
+或首次启动脚本），设备即可接管自己的 boot_a 生命周期。

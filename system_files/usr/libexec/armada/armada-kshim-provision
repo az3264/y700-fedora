@@ -1,0 +1,30 @@
+#!/bin/bash
+# Provision the kShimC boot_a lifecycle on a system that was flashed before the
+# auto-repack path existed.
+#
+# Inputs are dropped by the operator (or the EDL package) into
+# /var/lib/armada/kshimc-inputs/: the stock Android boot image of this exact
+# device and the 4 MiB kShimC runtime. The archive was produced by the vendor
+# EDL dump; the runtime is the one the boot image already carries.
+set -euo pipefail
+
+INPUTS=/var/lib/armada/kshimc-inputs
+STOCK="${INPUTS}/stock-boot.img"
+RUNTIME="${INPUTS}/kShimC.bin"
+KEY=/usr/lib/armada/kshimc/testkey_rsa4096.pem
+TARGET=/dev/disk/by-partlabel/boot_a
+
+[ -f "${STOCK}" ] || { echo "armada-kshim-provision: missing ${STOCK}" >&2; exit 1; }
+[ -f "${RUNTIME}" ] || { echo "armada-kshim-provision: missing ${RUNTIME}" >&2; exit 1; }
+[ -f "${KEY}" ] || { echo "armada-kshim-provision: missing ${KEY}" >&2; exit 1; }
+[ -b "${TARGET}" ] || { echo "armada-kshim-provision: ${TARGET} is not a block device" >&2; exit 1; }
+
+partuuid=$(blkid -s PARTUUID -o value "${TARGET}")
+[ -n "${partuuid}" ] || { echo "armada-kshim-provision: ${TARGET} has no PARTUUID" >&2; exit 1; }
+
+exec /usr/libexec/armada/armada-kshim-state adopt \
+    --stock-boot "${STOCK}" \
+    --runtime "${RUNTIME}" \
+    --sign-key "${KEY}" \
+    --partuuid "${partuuid}" \
+    --target "${TARGET}"
