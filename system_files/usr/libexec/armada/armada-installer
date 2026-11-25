@@ -674,9 +674,15 @@ def configure_deployment(target, source, uuids, kargs, boot_method="abl"):
     boot_method_file = root / "etc/armada/boot-method"
     boot_method_file.parent.mkdir(parents=True, exist_ok=True)
     boot_method_file.write_text("kshimc\n")
-    for name in ("etc/systemd/system/armada-bootimg-sync.service",
-                 "etc/systemd/system/armada-esp-rename.service",
-                 "etc/systemd/system/ostree-finalize-staged.service.d/10-armada-bootimg.conf"):
+    # The boot images are runtime-owned until this install is explicitly
+    # provisioned for the kShimC boot_a lifecycle. Keep the two deployment
+    # hooks enabled anyway: armada-bootimg-update decides at run time (boot
+    # medium + /etc/armada/boot-method + /var/lib/armada/kshimc) and stays a
+    # no-op before provisioning, so a provisioned install repacks and re-signs
+    # boot_a on every finalized deployment instead of silently keeping the
+    # boot record from install day. The ESP rename stays disabled: the internal
+    # kShimC path never edits the ESP label.
+    for name in ("etc/systemd/system/armada-esp-rename.service",):
         link = root / name
         link.parent.mkdir(parents=True, exist_ok=True)
         if link.is_symlink() or link.exists():

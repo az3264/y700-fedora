@@ -78,6 +78,8 @@ class StateTest(unittest.TestCase):
         self.stock.write_bytes(padded(b"STOCK"))
         self.runtime = self.root / "runtime.bin"
         self.runtime.write_bytes(b"RUNTIME-BYTES")
+        self.sign_key = self.root / "signing-key.pem"
+        self.sign_key.write_bytes(b"-----BEGIN RSA PRIVATE KEY-----\nTEST\n")
         self.current_image = self.root / "current.img"
         self.current_bytes = padded(b"CURRENT-INSTALLED")
         self.current_image.write_bytes(self.current_bytes)
@@ -127,6 +129,12 @@ class StateTest(unittest.TestCase):
                 mock.patch.object(state, "LOCK_PATH",
                                   str(self.root / "state.lock")),
                 mock.patch.object(state, "read_boot_id", lambda: self.boot_id),
+                mock.patch.object(state, "image_avb_fields",
+                                  lambda tools_dir, path: {
+                                      "algorithm": state.SIGN_ALGORITHM,
+                                      "rollback_index": 1738713600,
+                                      "key_sha1": "2597c218aae470a130f61"
+                                                   "162feaae70afd97f011"}),
                 mock.patch.object(state, "native_plan",
                                   lambda sync, args, selector: self.plan),
                 mock.patch.object(state, "run_child_sync", self.fake_child),
@@ -169,6 +177,9 @@ class StateTest(unittest.TestCase):
     def tool_meta(self, key):
         return self.file_meta(self.tools / SYNC.TOOL_FILES[key])
 
+    def signer_meta(self):
+        return self.file_meta(LIBEXEC / state.SIGNER)
+
     def report_for(self, item, stock, runtime, image=None):
         boot = self.boot
         kernel = boot / item["image"]
@@ -190,6 +201,7 @@ class StateTest(unittest.TestCase):
                 "unpacker": self.tool_meta("unpacker"),
                 "repacker": self.tool_meta("repacker"),
                 "avbtool": self.tool_meta("avbtool"),
+                "signer": self.signer_meta(),
             },
             "outputs": {"final_boot": {"path": "/historical/boot.img",
                                        "length": SMALL,
@@ -220,6 +232,10 @@ class StateTest(unittest.TestCase):
 
     def load_state(self):
         return json.loads((self.state_dir / "state.json")
+                          .read_text(encoding="utf-8"))
+
+    def load_config(self):
+        return json.loads((self.state_dir / "config.json")
                           .read_text(encoding="utf-8"))
 
     def store_state(self, document):
@@ -327,6 +343,7 @@ class StateTest(unittest.TestCase):
             "--current-image": str(self.current_image),
             "--current-report": str(report),
             "--partuuid": PARTUUID,
+            "--sign-key": str(self.sign_key),
         }
         values.update(extra)
         return self.invoke(self.argv("provision", **values))
@@ -336,6 +353,16 @@ class StateTest(unittest.TestCase):
         with redirect_stdout(stdout), redirect_stderr(stderr):
             code = state.main(argv)
         return code, stdout.getvalue(), stderr.getvalue()
+
+    def adopt(self, **extra):
+        values = {
+            "--stock-boot": str(self.stock),
+            "--runtime": str(self.runtime),
+            "--partuuid": PARTUUID,
+            "--sign-key": str(self.sign_key),
+        }
+        values.update(extra)
+        return self.invoke(self.argv("adopt", **values))
 
     def provisioned(self):
         code, out, err = self.provision()
@@ -796,6 +823,35 @@ class StateTest(unittest.TestCase):
         self.assertTrue(self.private("stock_boot").is_file())
         self.assertTrue(self.private("runtime").is_file())
         self.assertEqual(after["boot_observation"]["boot_id"], BOOT_C)
+
+
+class AdoptTest(StateTest):
+    def test_adopt_provisions_a_running_device(self):
+        self.target.write_bytes(b"ANDROID!" + b"\x00" * (SMALL - 8))
+        code, out, err = self.adopt()
+        self.assertEqual(code, 0, err)
+        document = self.load_state()
+        self.assertEqual(document["last_result"]["action"], "adopt")
+        config = self.load_config()
+        self.assertEqual(config["signing"]["algorithm"], state.SIGN_ALGORITHM)
+        self.assertEqual(config["signing"]["rollback_index"], 1738713600)
+        self.assertEqual(
+            sorted(path.name for path in (self.state_dir / "inputs").iterdir()),
+            ["runtime.bin", "signing-key.pem", "stock-boot.img"])
+
+    def test_adopt_requires_the_stock_boot_image(self):
+        code, out, err = self.invoke(self.argv(
+            "adopt", **{"--runtime": str(self.runtime),
+                        "--partuuid": PARTUUID,
+                        "--sign-key": str(self.sign_key)}))
+        self.assertEqual(code, 1)
+        self.assertIn("--stock-boot is required for adopt", err)
+
+    def test_adopt_refuses_a_target_that_is_not_an_android_boot_image(self):
+        self.target.write_bytes(b"NOT-ANDROID" + b"\x00" * (SMALL - 11))
+        code, out, err = self.adopt()
+        self.assertEqual(code, 1)
+        self.assertIn("does not start with an Android boot header", err)
 
 
 if __name__ == "__main__":

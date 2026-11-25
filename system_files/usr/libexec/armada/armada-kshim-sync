@@ -42,6 +42,9 @@ TOOL_FILES = {
     "repacker": "repack_boot_v4.py",
     "avbtool": "avbtool.py",
 }
+SIGNER = "kshim-sign-boot.py"
+DEFAULT_SIGN_KEY = "/usr/lib/armada/kshimc/testkey_rsa4096.pem"
+BOOT_BYTES = 100663296
 
 
 class SyncError(Exception):
@@ -400,6 +403,20 @@ def validate_full_args(args):
     for key in sorted(TOOL_FILES):
         path = os.path.join(args.tools_dir, TOOL_FILES[key])
         need(os.path.isfile(path), "kShimC tool missing (%s): %s" % (key, path))
+    if args.sign_key:
+        need(os.path.isfile(args.sign_key),
+             "--sign-key is not a file: %s" % args.sign_key)
+        need(isinstance(args.sign_rollback_index, int)
+             and args.sign_rollback_index >= 0,
+             "--sign-rollback-index must be a non-negative integer for a "
+             "signed write")
+        need(isinstance(args.sign_partition_size, int)
+             and args.sign_partition_size > 0,
+             "--sign-partition-size must be a positive integer")
+    elif not args.allow_unsigned:
+        need(False,
+             "refusing to write an unsigned boot image; pass --sign-key "
+             "(preferred) or --allow-unsigned")
     validate_work(args.work)
     return expected
 
@@ -478,6 +495,18 @@ def prepare_one(args, writer, item, out_dir, label):
     for key in ("options", "image", "initrd", "fdtdir"):
         need(metadata.get(key) == item[key],
              "%s report %s does not match the selected BLS" % (label, key))
+    if args.sign_key:
+        run_signer(args, image, report_path, label)
+        fd, image_sha = writer_call(writer, writer.open_image, image, label)
+        os.close(fd)
+        report = writer_call(writer, writer.read_json, report_path, label)
+        writer_call(writer, writer.validate_report, report, image_sha, label)
+        avb = report.get("avb_signing")
+        need(isinstance(avb, dict) and avb.get("algorithm") == "SHA256_RSA4096",
+             "%s report carries no AVB signature" % label)
+        need(avb.get("rollback_index") == args.sign_rollback_index,
+             "%s report AVB rollback index %r does not match %d"
+             % (label, avb.get("rollback_index"), args.sign_rollback_index))
     return {"image": image, "report": report_path, "sha256": image_sha}
 
 
@@ -485,6 +514,22 @@ def same_payload(candidate, fallback):
     return (candidate["entry"] == fallback["entry"]
             and same_identity(candidate["identity"], fallback["identity"])
             and candidate["options"] == fallback["options"])
+
+
+def run_signer(args, image, report, label):
+    """Authenticate the prepared image exactly like the Windows installer."""
+    command = [
+        sys.executable, os.path.join(args.libexec, SIGNER),
+        "--image", image,
+        "--key", args.sign_key,
+        "--avbtool", os.path.join(args.tools_dir, TOOL_FILES["avbtool"]),
+        "--partition-size", str(args.sign_partition_size),
+        "--rollback-index", str(args.sign_rollback_index),
+        "--report", report,
+    ]
+    code = subprocess.run(command, check=False).returncode
+    need(code == 0,
+         "%s signing failed: kshim-sign-boot exited %d" % (label, code))
 
 
 def run_writer(args, candidate, fallback, partuuid, expected, transaction_dir):
@@ -685,6 +730,13 @@ def parse_args(argv=None):
     parser.add_argument("--partuuid")
     parser.add_argument("--expected-current-sha256")
     parser.add_argument("--work")
+    parser.add_argument("--sign-key", default=None,
+                        help="AVB signing key for the written image")
+    parser.add_argument("--sign-rollback-index", type=int, default=None)
+    parser.add_argument("--sign-partition-size", type=int, default=BOOT_BYTES)
+    parser.add_argument("--allow-unsigned", action="store_true",
+                        help="write the repacked image without AVB (only for "
+                             "hosts that sign the image later)")
     parser.add_argument("--target", default="/dev/disk/by-partlabel/boot_a")
     return parser.parse_args(argv)
 

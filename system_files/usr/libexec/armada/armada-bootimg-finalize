@@ -30,8 +30,17 @@ armada_boot_medium_gate || {
 }
 case "${ARMADA_BOOT_MEDIUM:-}" in
     internal)
-        echo "armada-bootimg-finalize: internal medium boot; installed boot images are runtime-owned"
-        exit 0
+        # Same exception as the updater: a provisioned kShimC install owns its
+        # boot_a writes through the signing state tool; everything else on an
+        # internal-medium board stays runtime-owned.
+        if [ -f /etc/armada/boot-method ] &&
+            [ "$(cat /etc/armada/boot-method 2>/dev/null)" = kshimc ] &&
+            [ -d /var/lib/armada/kshimc ]; then
+            echo "armada-bootimg-finalize: internal medium with provisioned kShimC state; using the state tool"
+        else
+            echo "armada-bootimg-finalize: internal medium boot; installed boot images are runtime-owned"
+            exit 0
+        fi
         ;;
     legacy)
         ;;
