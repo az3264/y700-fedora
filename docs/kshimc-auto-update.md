@@ -117,10 +117,10 @@ release 私钥，因为 boot_a 的校验只依赖公开的 AOSP 测试私钥。
 ## 4. 操作与验证
 
 ```bash
-# 一次性接管已装机设备（stock boot.img + runtime 来自 EDL 包）
+# 一次性接管已装机设备（stock boot.img + runtime 来自 EDL 包，见第 5 节）
 sudo /usr/libexec/armada/armada-kshim-state adopt \
   --stock-boot /root/stock-boot.img \
-  --runtime /usr/lib/armada/kshimc/kShimC.bin \
+  --runtime /root/kShimC.bin \
   --sign-key /usr/lib/armada/kshimc/testkey_rsa4096.pem \
   --partuuid "$(blkid -s PARTUUID -o value /dev/disk/by-partlabel/boot_a)"
 
@@ -142,7 +142,20 @@ sudo /usr/libexec/armada/armada-kshim-state record-boot
    `5cb3ebdfb6a06432fef4cef7bdb111e77f68fb2cf70bbdb134db0a093fd4280c`）；
 5. 任何异常的最后手段是 EDL 9008 恢复。
 
-## 5. 待办
+## 5. 输入从哪来
+
+`/var/lib/armada/kshimc-inputs/` 需要两个文件：
+
+| 文件 | 来源 |
+| --- | --- |
+| `stock-boot.img` | 原厂 EDL 备份里的 `boot.img`（96 MiB，`ANDROID!` 头，AVB release string `freedom-edl-direct`）|
+| `kShimC.bin` | EDL 包里的 `models/TB322FC/runtime/runtime.bin`（4 MiB，带 `ARMDSK1` 标记）|
+
+两者都**不能**从当前 boot_a 反推：现在 boot_a 里的“内核”是 gzip 压缩的
+kShimC 运行时，不是原厂内核，`kshim-build-boot.py` 会以
+`stock_image:raw-not-gzip` / `stock_boot:magic` 拒绝。
+
+## 6. 待办
 
 - 用原厂 EDL 备份里的 `stock-boot.img` 在真机跑一次 `adopt` + 重启验证。
 - installer 首次安装时调用 `provision`（需要把 stock boot 与 runtime 一起
@@ -151,7 +164,7 @@ sudo /usr/libexec/armada/armada-kshim-state record-boot
   （重编 runtime + 一次性重刷），或在 `ARMADA_BOOT` 之外增加可写 generation。
 - TB323FU / TB710FU 不在本次范围（仅 TB322FC）。
 
-## 6. 自动 provision（EDL 输入就位时）
+## 7. 自动 provision（EDL 输入就位时）
 
 新镜像内置 `armada-kshim-provision.service`（oneshot，已 enable）：
 
