@@ -147,13 +147,21 @@ if [ "${bound}" -eq 1 ]; then
         if [ -n "${newer_deploy}" ] && [ "${newer_deploy}" != "${bound_deploy}" ]; then
             osname=${binding%%/*}
             case "${osname}" in ''|*/*) osname=default ;; esac
-            mkdir -p /sysroot/ostree/armada 2>/dev/null || true
-            if ln -sfn "../deploy/${osname}/deploy/${newer_deploy}" \
-                 "/sysroot/ostree/armada/${newer_deploy}" 2>/dev/null; then
-                found="/ostree/armada/${newer_deploy}"
-            else
-                found=${newer%% *}
-            fi
+            # Keep the pointer shape the boot image baked: the update stack
+            # validates the cmdline against the deployment and accepts only the
+            # shape this boot medium was built for.
+            case "${karg}" in
+                /ostree/armada/*)
+                    mkdir -p /sysroot/ostree/armada 2>/dev/null || true
+                    if ln -sfn "../deploy/${osname}/deploy/${newer_deploy}" \
+                         "/sysroot/ostree/armada/${newer_deploy}" 2>/dev/null; then
+                        found="/ostree/armada/${newer_deploy}"
+                    else
+                        found=${newer%% *}
+                    fi
+                    ;;
+                *) found=${newer%% *} ;;
+            esac
             binding="${osname}/${newer_deploy}"
             soft=1
             log "ostree ranks ${newer_deploy} first; following it instead of the baked ${bound_deploy}"

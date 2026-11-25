@@ -649,6 +649,41 @@ class SelectorAndFallbackTests(unittest.TestCase):
             self.assertEqual(restored.returncode, 0, restored.stderr)
             self.assertEqual(env["proc_cmdline"].read_text(encoding="utf-8"), expected)
 
+    def test_fallback_keeps_baked_pointer_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            # The boot image baked a bootlink karg: keep that shape, because the
+            # update stack validates the cmdline against the boot medium.
+            sysroot, old, new = create_sysroot(
+                base / "a",
+                boot0_links={
+                    "0": f"../../../deploy/{OSNAME}/deploy/{OLD_COMMIT}.0",
+                    "1": f"../../../deploy/{OSNAME}/deploy/{NEW_COMMIT}.0",
+                },
+            )
+            karg = f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/0"
+            cmdline = (
+                f"rw boot=UUID=1234-ABCD ostree={karg} "
+                f"armada.deployment={OSNAME}/{OLD_COMMIT}.0 quiet"
+            )
+            env = self.prepare_fallback_env(base / "env", sysroot, cmdline)
+            self.write_loader_entries(
+                env["run_armada"],
+                {
+                    1: karg,
+                    2: f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/1",
+                },
+            )
+
+            res = self.run_fallback(env)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            expected = (
+                f"rw boot=UUID=1234-ABCD ostree=/ostree/boot.0/{OSNAME}/{BOOTCSUM}/1 "
+                f"armada.deployment={OSNAME}/{NEW_COMMIT}.0 quiet\n"
+            )
+            self.assertEqual(env["captured_bind"].read_text(encoding="utf-8"), expected)
+            self.assertFalse((sysroot / "ostree" / "armada").exists())
+
     def test_fallback_keeps_binding_when_default_kernel_differs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
