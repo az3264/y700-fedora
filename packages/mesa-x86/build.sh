@@ -27,8 +27,21 @@ trap cleanup EXIT
 # not reference glibc symbols newer than the rootfs ships.
 echo "Server=https://archive.archlinux.org/repos/${GUEST_SNAPSHOT}/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
 printf '[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
-pacman -Syyuu --noconfirm
-pacman -S --noconfirm --needed \
+# archive.archlinux.org throttles bursts: fetch each package with retries instead
+# of failing the whole transaction on one slow stream.
+printf 'XferCommand = /usr/bin/curl -f -L -C - --retry 5 --retry-delay 3 --retry-all-errors -o %%o %%u\n' \
+    >> /etc/pacman.conf
+pacman_retry() {
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        pacman "$@" && return 0
+        echo "pacman $* failed (attempt ${attempt}/5); retrying" >&2
+        sleep $((attempt * 10))
+    done
+    return 1
+}
+pacman_retry -Syyuu --noconfirm --disable-download-timeout
+pacman_retry -S --noconfirm --needed --disable-download-timeout \
     meson ninja python-mako python-yaml python-packaging python-ply \
     bison flex cmake glslang squashfs-tools \
     libdrm libxcb libx11 libxshmfence libxrandr xcb-util-keysyms wayland wayland-protocols \
