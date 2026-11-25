@@ -37,6 +37,10 @@ Source0:     %{forgeurl}/archive/%{commit}/%{srcname}-%{commit}.tar.gz
 Source0:    %{forgeurl}/archive/%{srcname}-%{version}/%{srcname}-%{srcname}-%{version}.tar.gz
 %endif
 
+# LLVM 23 removed clang::FileManager's stat cache and clearStatCache() with it;
+# FEX's thunk generator still calls it unguarded. Carried until upstream fixes it.
+Patch0:     0001-thunkgen-llvm23-clearstatcache.patch
+
 # coarse aggregate license: the sysroot is a build-time artifact, not shipped
 # standalone, so Fedora's per-package fex-sysroot-macros.inc machinery is skipped.
 %if 0%{?has_sysroot}
@@ -212,6 +216,9 @@ This package provides host library thunks for %{name}.
 %else
 %setup -q -n %{srcname}-%{srcname}-%{version}
 %endif
+
+# Build with the clang 23 thunk generator of the Fedora 45 builder.
+%patch -P 0 -p1
 
 # Unpack bundled libraries
 %{lua: print_setup_externals()}

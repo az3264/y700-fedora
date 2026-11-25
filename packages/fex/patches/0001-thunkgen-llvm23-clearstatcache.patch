@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ArmadaOS Freedom <armadaos-freedom@users.noreply.github.com>
+Date: Tue, 25 Nov 2026 00:00:00 +0800
+Subject: [PATCH] ThunkLibs/Generator: drop FileManager::clearStatCache for LLVM 23
+
+LLVM 23 removed clang::FileManager's FileSystemStatCache entirely, and with
+it FileManager::clearStatCache(). Virtual file entries are consulted directly
+by getFileRef(), so there is no stat cache left to invalidate.
+
+Guard the call so FEX keeps building against LLVM 22 (which still has it) and
+LLVM 23 (clang 23 in the Fedora 45 builder). Without this the thunk generator
+fails to build with:
+
+  gen.cpp:843:10: error: no member named 'clearStatCache' in 'clang::FileManager'
+
+Upstream status: FEX master still calls clearStatCache() unguarded, so this is
+carried locally until FEX grows an LLVM 23 guard.
+---
+ ThunkLibs/Generator/gen.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/ThunkLibs/Generator/gen.cpp b/ThunkLibs/Generator/gen.cpp
+--- a/ThunkLibs/Generator/gen.cpp
++++ b/ThunkLibs/Generator/gen.cpp
+@@ -840,6 +840,8 @@
+ 
+   const bool Success = Compiler.ExecuteAction(Action);
+ 
++#if LLVM_VERSION_MAJOR < 23
+   Files->clearStatCache();
++#endif
+   return Success;
+ }
