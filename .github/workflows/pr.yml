@@ -15,7 +15,7 @@ permissions:
   packages: read
 
 env:
-  BASE_IMAGE: "quay.io/fedora/fedora-bootc:44"
+  BASE_IMAGE: "quay.io/fedora/fedora-bootc:45"
   IMAGE_DESC: "Armada: a gaming-focused, SteamOS-like Fedora bootc image for ARM64 handhelds"
   IMAGE_NAME: "${{ github.event.repository.name }}"
   FREEDOM_PKG: "ghcr.io/armadaos-freedom/armada/pkg"
@@ -84,7 +84,7 @@ jobs:
         run: >
           docker run --rm --cpus 2 --memory 2g
           -v "${GITHUB_WORKSPACE}:/src:ro" -w /src
-          -e PYTHONDONTWRITEBYTECODE=1 fedora:44
+          -e PYTHONDONTWRITEBYTECODE=1 fedora:45
           bash -lc "dnf install -y --setopt=install_weak_deps=false python3-gobject ostree btrfs-progs openssl && python3 -B tests/update-offline-image-test.py && python3 -B tests/update-offline-payload-test.py"
       - name: Check native Steam client update adapter
         run: |
