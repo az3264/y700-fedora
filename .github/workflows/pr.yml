@@ -131,6 +131,12 @@ jobs:
 
       - name: Resolve what this PR has to build
         id: resolve
+        env:
+          # ghcr.io/armada-os rejects anonymous token requests with 403, and a
+          # lookup error there is fatal rather than a cache miss. A fork cannot
+          # read that registry anyway, so it resolves against FREEDOM_PKG only
+          # and builds everything absent locally.
+          UPSTREAM_PKG: ${{ github.repository == 'ArmadaOS-Freedom/armadaos-freedom' && 'ghcr.io/armada-os/armada/pkg' || '' }}
         run: |
           set -euo pipefail
           # Anonymous: reading a public package needs no token, and holding none
