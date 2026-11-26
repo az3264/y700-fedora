@@ -140,7 +140,9 @@ sudo /usr/libexec/armada/armada-kshim-state record-boot
 3. `vbmeta_a` 的 chain 描述符（key sha1 + rollback index 3）保持不变；
 4. 写前保留 boot_a 原始备份（实测 sha256
    `5cb3ebdfb6a06432fef4cef7bdb111e77f68fb2cf70bbdb134db0a093fd4280c`）；
-5. 任何异常的最后手段是 EDL 9008 恢复。
+5. **写入目标必须是固件真正启动的活动槽**（GPT 属性 bit 50；实测该机
+   `boot_a` 自出厂即 inactive，`boot_b` 才是活动槽），见第 8 节；
+6. 任何异常的最后手段是 EDL 9008 恢复。
 
 ## 5. 输入从哪来
 
@@ -178,3 +180,55 @@ kShimC 运行时，不是原厂内核，`kshim-build-boot.py` 会以
 
 因此刷机方只需把这两个文件放进 `/var/lib/armada/kshimc-inputs/`（EDL 包
 或首次启动脚本），设备即可接管自己的 boot_a 生命周期。
+
+## 8. 真机事故记录：写错槽 + 未验证镜像（2026-11-26）
+
+这一节记录一次**把平板写砖**的经过，作为后续修改的硬约束来源。
+
+### 8.1 发现：该机只有一个可启动槽，且不是 boot_a
+
+`lsblk -o NAME,PARTLABEL,PARTFLAGS /dev/sde` 实测：
+
+| 分区 | PARTFLAGS | 解码（`storage_ab.c`：ACTIVE=1<<50、PRIORITY=3<<48、SUCCESS=1<<54、UNBOOTABLE=1<<55）|
+| --- | --- | --- |
+| `boot_a` | `0xeb000000000000` | inactive、success、**unbootable**、prio=3 |
+| `boot_b` | `0x77000000000000` | **active**、success、bootable、prio=3 |
+
+原厂 EDL 备份 `backup-manifest.json` 里两条分区的 GPT 属性与上面完全一致，
+说明 `boot_a` 自出厂就不可启动；armada 安装时把 kShimC 镜像写进了
+`boot_b`。因此本仓库工具默认的 `--target /dev/disk/by-partlabel/boot_a`
+在真机上是**永远不会被启动**的槽。
+
+### 8.2 事故
+
+1. 用 `internal-backup-.../boot_b.bin`（sha256
+   `b428a31d…9898f20`，恰好等于 `kshim-build-boot.py` 里的
+   `STOCK_BOOT_SHA256`，走 `tb322fc-stock259-verified` 档位）+ EDL 包的
+   `runtime.bin` 在 host 上构建 installed 布局候选，离线 393 项校验通过，
+   用测试密钥签成 `SHA256_RSA4096`（`248bdb53…0f20f1`）。
+2. 先在活动槽 `boot_a` 上试写——重启后设备仍在跑旧部署，这才发现
+   活动槽是 `boot_b`（8.1）。
+3. 随后把这个**从未启动验证过**的镜像写进 `boot_b`（唯一可启动槽），
+   重启即无法启动：无网络、无 fastboot、屏幕报错，只能 9008 救砖。
+4. 恢复：用厂商恢复工具回到出厂单安卓系统（原 `internal-backup` /
+   `global-backup` 两套备份均可用）。
+
+### 8.3 仍未知
+
+- installed 布局镜像为什么起不来：离线校验全过、AVB 也验过，说明问题在
+  运行期（kShimC 运行时的 entry/load 参数、`ARMDSK1` 描述符或 bootargs），
+  而不是打包格式。**下次必须先走 EDL 整包或在备用槽验证**，不能直接写
+  唯一活动槽。
+- 同一批输入按 `--layout maintenance` 重建（stock `boot_b.bin` + EDL 的
+  `kernel.img`/`initramfs.img`/`dtb-normal.img` + `runtime.bin`）离线校验
+  通过，签名为 `a24fa3a7…2e2cd68c`，可作为"回到可用 boot_b"的对照镜像。
+
+### 8.4 由此确定的硬规则
+
+1. repack 前解析 GPT 属性，把目标设为 **active slot**；目标既非活动槽又非
+   唯一的可启动槽时直接拒绝。
+2. 镜像是"未经验证"状态时（例如本机没有一次成功启动记录），只允许通过
+   EDL 整包或恢复分区刷写，不允许 `dd` 到唯一可启动槽。
+3. 任何自动化改动都要保留可回滚的 on-device 备份，并把备份指纹写进状态
+   目录（本机 `/var/tmp/kshim/boot_b.backup.img` 因为设备起不来而丢失，
+   这也是必须在 host 端留一份的原因）。
