@@ -17,7 +17,17 @@ BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(libprotobuf-c)
 BuildRequires:  pkgconfig(qmi-glib)
+# Fedora 45 rebuilt protobuf-c as protobuf3-c (compat, linked against
+# libprotobuf.so.30). The old protobuf-c-compiler subpackage keeps a strict
+# `protobuf-c == 1.5.2-5` requirement, and protobuf3-c obsoletes exactly that
+# version, so `dnf builddep` cannot solve a `protobuf-c-compiler` requirement
+# once protobuf3-c is in the build root.
+%if 0%{?fedora} >= 45
+BuildRequires:  protobuf3-c-devel
+BuildRequires:  protobuf3-c-compiler
+%else
 BuildRequires:  protobuf-c-compiler
+%endif
 BuildRequires:  protobuf-compiler
 # The mock SSC server for libssc's tests is configured unconditionally.
 BuildRequires:  python3-devel
