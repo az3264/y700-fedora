@@ -15,8 +15,8 @@ SOURCE_SHA256="${SOURCE_SHA256:-}"
 SOURCE_TARBALL="${SOURCE_URL##*/}"
 
 # The pinned Rawhide SRPM supplies Fedora's packaging; SOURCE_URL can replace its
-# Mesa source for prereleases. Packages target the fedora:44 runtime ABI.
-DIST=".fc44.armada"
+# Mesa source for prereleases. Packages target the fedora:45 runtime ABI.
+DIST=".fc45.armada"
 SUBPKGS="mesa-filesystem mesa-libgbm mesa-dri-drivers mesa-vulkan-drivers mesa-libGL mesa-libEGL"
 
 export CCACHE_DIR="${CCACHE_DIR:-/ccache}"

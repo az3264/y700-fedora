@@ -5,7 +5,7 @@ set -euxo pipefail
 source ./BASE.env
 source /src/toolchain.env
 
-SYSROOT_VERSION="${SYSROOT_VERSION:-fc44-armada}"
+SYSROOT_VERSION="${SYSROOT_VERSION:-fc45-armada}"
 SYSROOT_TARBALL="fex-sysroot-${SYSROOT_VERSION}.tar.gz"
 
 # The stage copies this in from pkg-fex-sysroot. Dev builds produce it here.
@@ -35,6 +35,8 @@ sed -i "/^%build$/i %global build_cflags %{build_cflags} ${ARMADA_MARCH}" ~/rpmb
 sed -i "/^%build$/i %global build_cxxflags %{build_cxxflags} ${ARMADA_MARCH}" ~/rpmbuild/SPECS/fex-emu.spec
 cp toolchain_x86_32.cmake toolchain_x86_64.cmake \
    build-fex-sysroot.sh "${SYSROOT_TARBALL}" ~/rpmbuild/SOURCES/
+# Local patches listed as Patch0.. in fex-emu.spec
+cp patches/*.patch ~/rpmbuild/SOURCES/
 spectool -g -R --define "commit ${COMMIT}" --define "date ${DATE}" --define "base_version ${BASE_VERSION}" ~/rpmbuild/SPECS/fex-emu.spec
 rpmbuild -bb --define "commit ${COMMIT}" --define "date ${DATE}" --define "base_version ${BASE_VERSION}" ~/rpmbuild/SPECS/fex-emu.spec
 cp ~/rpmbuild/RPMS/aarch64/*.rpm /work/out/

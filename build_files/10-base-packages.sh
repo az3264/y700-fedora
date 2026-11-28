@@ -79,13 +79,13 @@ curl --connect-timeout 30 --max-time 120 --retry 3 -fsSL \
     -o /etc/yum.repos.d/negativo17-fedora-multimedia.repo \
     https://negativo17.org/repos/fedora-multimedia.repo
 
-# Fedora 44's libavcodec requires OpenAPV's liboapv.so.11. Install the
+# Fedora 45's libavcodec requires OpenAPV's liboapv.so.11. Install the
 # matching library explicitly so multimedia updates cannot silently omit it.
-openapv_version=1.1.3.0-1.fc44
+openapv_version=1.1.3.0-1.fc45
 curl --connect-timeout 30 --max-time 120 --retry 3 -fsSL \
     -o /tmp/openapv-libs.rpm \
-    "https://kojipkgs.fedoraproject.org/packages/openapv/1.1.3.0/1.fc44/aarch64/openapv-libs-${openapv_version}.aarch64.rpm"
-echo '835803a9e9b65e0fac5500feceac15dd1da897b138c76db23fc406f72de9fa7b  /tmp/openapv-libs.rpm' | sha256sum -c -
+    "https://kojipkgs.fedoraproject.org/packages/openapv/1.1.3.0/1.fc45/aarch64/openapv-libs-${openapv_version}.aarch64.rpm"
+echo '589e71f09126f49350c2f13f049ba319730ffc4ca61fafa8829147ee560c152d  /tmp/openapv-libs.rpm' | sha256sum -c -
 
 dnf5 -y install --setopt=install_weak_deps=False \
     /tmp/openapv-libs.rpm \
@@ -191,7 +191,7 @@ dnf5 -y install --setopt=install_weak_deps=False \
 
 
 # PowerDevil's KWin backend treats 0 as safe; reserve 5% for internal panels.
-dnf5 -y install --setopt=install_weak_deps=False /packages/powerdevil/powerdevil-*.fc44.armada.*.rpm
+dnf5 -y install --setopt=install_weak_deps=False /packages/powerdevil/powerdevil-*.fc45.armada.*.rpm
 
 dnf5 -y install --setopt=install_weak_deps=False firefox
 

@@ -366,6 +366,9 @@ class SelectorAndFallbackTests(unittest.TestCase):
             '    [ "${MOCK_REMOUNT_FAIL:-0}" = "1" ] && exit 1\n'
             "    exit 0\n"
             "fi\n"
+            'if [ "${1:-}" = "-o" ] && [ "${2:-}" = "ro" ]; then\n'
+            "    exit 0\n"
+            "fi\n"
             "exit 1\n",
             encoding="utf-8",
         )
@@ -379,7 +382,8 @@ class SelectorAndFallbackTests(unittest.TestCase):
             'if [ "${MOCK_UMOUNT_FAIL:-0}" = "1" ]; then\n'
             "    exit 1\n"
             "fi\n"
-            'if [ -n "${MOCK_ORIG_CMDLINE:-}" ] && [ -f "${MOCK_ORIG_CMDLINE}" ]; then\n'
+            'if [ -n "${MOCK_ORIG_CMDLINE:-}" ] && [ -f "${MOCK_ORIG_CMDLINE}" ] && \\\n'
+            '   [ -n "${MOCK_CMDLINE_PATH:-}" ] && [ "$1" = "${MOCK_CMDLINE_PATH}" ]; then\n'
             '    cp -- "${MOCK_ORIG_CMDLINE}" "$1"\n'
             "fi\n"
             "exit 0\n",
@@ -424,6 +428,7 @@ class SelectorAndFallbackTests(unittest.TestCase):
         env["MOCK_MOUNT_LOG"] = str(env_paths["mount_log"])
         env["MOCK_CAPTURED_BIND"] = str(env_paths["captured_bind"])
         env["MOCK_ORIG_CMDLINE"] = str(env_paths["orig_cmdline"])
+        env["MOCK_CMDLINE_PATH"] = str(env_paths["proc_cmdline"])
         if extra_env:
             env.update(extra_env)
         return subprocess.run(
@@ -575,6 +580,144 @@ class SelectorAndFallbackTests(unittest.TestCase):
                 "marker must be retained when umount fails so --restore can retry",
             )
             self.assertFalse(env_both_fail["staged_alias"].exists())
+
+    def write_loader_entries(self, run_armada: Path, entries: dict[int, str]) -> None:
+        entries_dir = run_armada / "boot" / "loader" / "entries"
+        entries_dir.mkdir(parents=True, exist_ok=True)
+        for num, karg in entries.items():
+            (entries_dir / f"ostree-{num}.conf").write_text(
+                "title ArmadaOS-Freedom test\n"
+                f"version {num}\n"
+                f"linux /boot/ostree/default-{BOOTCSUM}/vmlinuz-7.2.6\n"
+                f"initrd /boot/ostree/default-{BOOTCSUM}/initramfs-7.2.6.img\n"
+                f"fdtdir /boot/ostree/default-{BOOTCSUM}/dtb\n"
+                f"options rw root=UUID=0000 ostree={karg}\n",
+                encoding="utf-8",
+            )
+
+    def test_fallback_follows_ostree_default_deployment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            # A layered deployment was staged on the device: ostree ranks the
+            # NEW deployment first (ostree-2), the image still bakes the OLD one.
+            sysroot, old, new = create_sysroot(
+                base / "a",
+                boot0_links={
+                    "0": f"../../../deploy/{OSNAME}/deploy/{NEW_COMMIT}.0",
+                    "1": f"../../../deploy/{OSNAME}/deploy/{OLD_COMMIT}.0",
+                },
+            )
+            armada = sysroot / "ostree" / "armada"
+            armada.mkdir()
+            (armada / f"{OLD_COMMIT}.0").symlink_to(os.path.relpath(old, armada))
+
+            cmdline = (
+                f"rw boot=UUID=1234-ABCD ostree=/ostree/armada/{OLD_COMMIT}.0 "
+                f"armada.deployment={OSNAME}/{OLD_COMMIT}.0 quiet"
+            )
+            env = self.prepare_fallback_env(base / "env", sysroot, cmdline)
+            self.write_loader_entries(
+                env["run_armada"],
+                {
+                    1: f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/1",
+                    2: f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/0",
+                },
+            )
+
+            res = self.run_fallback(env)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            expected = (
+                f"rw boot=UUID=1234-ABCD ostree=/ostree/armada/{NEW_COMMIT}.0 "
+                f"armada.deployment={OSNAME}/{NEW_COMMIT}.0 quiet\n"
+            )
+            self.assertEqual(env["captured_bind"].read_text(encoding="utf-8"), expected)
+            self.assertEqual(env["proc_cmdline"].read_text(encoding="utf-8"), expected)
+
+            new_link = armada / f"{NEW_COMMIT}.0"
+            self.assertTrue(new_link.is_symlink(), "the followed deployment needs a stable pointer")
+            self.assertEqual(
+                os.readlink(new_link), f"../deploy/{OSNAME}/deploy/{NEW_COMMIT}.0"
+            )
+            self.assertTrue((env["run_armada"] / "ostree-default-remapped").is_file())
+            self.assertFalse(
+                env["marker"].exists(),
+                "a followed default must not be treated as a rescued stale karg",
+            )
+
+            # The corrected cmdline is this boot's truth: --restore leaves it.
+            restored = self.run_fallback(env, "--restore")
+            self.assertEqual(restored.returncode, 0, restored.stderr)
+            self.assertEqual(env["proc_cmdline"].read_text(encoding="utf-8"), expected)
+
+    def test_fallback_keeps_baked_pointer_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            # The boot image baked a bootlink karg: keep that shape, because the
+            # update stack validates the cmdline against the boot medium.
+            sysroot, old, new = create_sysroot(
+                base / "a",
+                boot0_links={
+                    "0": f"../../../deploy/{OSNAME}/deploy/{OLD_COMMIT}.0",
+                    "1": f"../../../deploy/{OSNAME}/deploy/{NEW_COMMIT}.0",
+                },
+            )
+            karg = f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/0"
+            cmdline = (
+                f"rw boot=UUID=1234-ABCD ostree={karg} "
+                f"armada.deployment={OSNAME}/{OLD_COMMIT}.0 quiet"
+            )
+            env = self.prepare_fallback_env(base / "env", sysroot, cmdline)
+            self.write_loader_entries(
+                env["run_armada"],
+                {
+                    1: karg,
+                    2: f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/1",
+                },
+            )
+
+            res = self.run_fallback(env)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            expected = (
+                f"rw boot=UUID=1234-ABCD ostree=/ostree/boot.0/{OSNAME}/{BOOTCSUM}/1 "
+                f"armada.deployment={OSNAME}/{NEW_COMMIT}.0 quiet\n"
+            )
+            self.assertEqual(env["captured_bind"].read_text(encoding="utf-8"), expected)
+            self.assertFalse((sysroot / "ostree" / "armada").exists())
+
+    def test_fallback_keeps_binding_when_default_kernel_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            # ostree's first deployment needs another kernel, so this boot image
+            # cannot enter it: keep the baked binding untouched.
+            sysroot, old, new = create_sysroot(
+                base / "a",
+                boot0_links={"0": f"../../../deploy/{OSNAME}/deploy/{OLD_COMMIT}.0"},
+                boot1_links={"0": f"../../../deploy/{OSNAME}/deploy/{NEW_COMMIT}.0"},
+                boot1_csum=OTHER_BOOTCSUM,
+            )
+            armada = sysroot / "ostree" / "armada"
+            armada.mkdir()
+            (armada / f"{OLD_COMMIT}.0").symlink_to(os.path.relpath(old, armada))
+
+            cmdline = (
+                f"rw boot=UUID=1234-ABCD ostree=/ostree/armada/{OLD_COMMIT}.0 "
+                f"armada.deployment={OSNAME}/{OLD_COMMIT}.0 quiet"
+            )
+            env = self.prepare_fallback_env(base / "env", sysroot, cmdline)
+            self.write_loader_entries(
+                env["run_armada"],
+                {
+                    2: f"/ostree/boot.1/{OSNAME}/{OTHER_BOOTCSUM}/0",
+                    1: f"/ostree/boot.0/{OSNAME}/{BOOTCSUM}/0",
+                },
+            )
+
+            res = self.run_fallback(env)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertFalse(env["captured_bind"].exists(), "no remap across kernels")
+            self.assertEqual(env["proc_cmdline"].read_text(encoding="utf-8"), f"{cmdline}\n")
+            self.assertFalse((armada / f"{NEW_COMMIT}.0").exists())
+            self.assertFalse(env["marker"].exists())
 
     def test_fallback_legacy_unbound_compat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

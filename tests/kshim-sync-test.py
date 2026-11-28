@@ -296,7 +296,7 @@ class SyncTest(unittest.TestCase):
                 "--sysroot", str(self.tree.sysroot),
                 "--libexec", str(LIBEXEC), "--args-file", str(ARGS_FILE)]
 
-    def full_argv(self, overrides=None):
+    def full_argv(self, overrides=None, flags=("--allow-unsigned",)):
         values = {
             "--boot-dir": str(self.tree.boot),
             "--sysroot": str(self.tree.sysroot),
@@ -313,7 +313,7 @@ class SyncTest(unittest.TestCase):
             "--target": str(self.target),
         }
         values.update(overrides or {})
-        argv = []
+        argv = list(flags)
         for key in sorted(values):
             argv.extend([key, values[key]])
         return argv

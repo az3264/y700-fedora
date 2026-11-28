@@ -654,12 +654,16 @@ class SourceTests(unittest.TestCase):
         self.assertTrue((target / "var/lib/audit/seeded").is_file())
         deploy = origin_file.with_suffix("")
         self.assertEqual((deploy / "etc/armada/boot-method").read_text(), "kshimc\n")
+        masked = deploy / "etc/systemd/system/armada-esp-rename.service"
+        self.assertTrue(masked.is_symlink())
+        self.assertEqual(os.readlink(masked), "/dev/null")
+        # The deployment hooks stay enabled: they are no-ops until the install
+        # is provisioned for the kShimC boot_a lifecycle and only then repack
+        # and re-sign boot_a on every finalized deployment.
         for name in ("etc/systemd/system/armada-bootimg-sync.service",
-                     "etc/systemd/system/armada-esp-rename.service",
                      "etc/systemd/system/ostree-finalize-staged.service.d/10-armada-bootimg.conf"):
-            link = deploy / name
-            self.assertTrue(link.is_symlink(), name)
-            self.assertEqual(os.readlink(link), "/dev/null")
+            node = deploy / name
+            self.assertFalse(node.is_symlink(), name)
         self.assertFalse((deploy / "etc/systemd/system/ostree-finalize-staged.service").is_symlink())
         fstab = (deploy / "etc/fstab").read_text()
         self.assertIn("UUID=boot-uuid /boot ", fstab)

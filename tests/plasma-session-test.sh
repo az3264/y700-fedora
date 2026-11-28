@@ -17,16 +17,16 @@ fail() {
 
 source "$LIB"
 state="$tmp/state.toml"
-# Missing or raw upstream state follows the Mobile default.
-[[ "$(armada_plasma_shell "$state")" == mobile ]]
+# Missing or raw upstream state follows the Desktop default.
+[[ "$(armada_plasma_shell "$state")" == desktop ]]
 printf 'desktop_session = "armada-plasma.desktop"\n' >"$state"
 [[ "$(armada_plasma_shell "$state")" == desktop ]]
 printf '[x]\ndesktop_session="armada-plasma-mobile.desktop"\n' >"$state"
 [[ "$(armada_plasma_shell "$state")" == mobile ]]
 printf 'desktop_session = "plasma.desktop"\n' >"$state"
-[[ "$(armada_plasma_shell "$state")" == mobile ]]
+[[ "$(armada_plasma_shell "$state")" == desktop ]]
 printf 'desktop_session = "armada-plasma-unknown.desktop"\n' >"$state"
-[[ "$(armada_plasma_shell "$state")" == mobile ]]
+[[ "$(armada_plasma_shell "$state")" == desktop ]]
 
 grep -qx 'Exec=/usr/libexec/armada/armada-plasma-session standalone' "$SESSIONS/armada-plasma.desktop"
 grep -qx 'Exec=/usr/libexec/armada/armada-plasma-session standalone mobile' "$SESSIONS/armada-plasma-mobile.desktop"

@@ -12,7 +12,7 @@ depends() {
 }
 
 install() {
-    inst_multiple mkdir mount umount rm readlink
+    inst_multiple mkdir mount umount rm readlink ln
 
     inst_script "$moddir/armada-ostree-fallback.sh" \
         /usr/libexec/armada/armada-ostree-fallback

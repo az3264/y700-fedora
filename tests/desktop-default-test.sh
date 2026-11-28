@@ -35,16 +35,16 @@ reset() {
     rm -f "$state" "$legacy"
 }
 
-# A fresh profile still holds upstream's raw plasma.desktop: seed Mobile.
+# A fresh profile still holds upstream's raw plasma.desktop: seed Desktop.
 reset
 printf 'plasma.desktop\n' >"$state"
 seed
-[[ "$(<"$state")" == armada-plasma-mobile.desktop ]]
+[[ "$(<"$state")" == armada-plasma.desktop ]]
 
 # No state at all is seeded the same way.
 reset
 seed
-[[ "$(<"$state")" == armada-plasma-mobile.desktop ]]
+[[ "$(<"$state")" == armada-plasma.desktop ]]
 
 # Both explicit armada choices survive repeated seeding.
 for session in armada-plasma.desktop armada-plasma-mobile.desktop; do

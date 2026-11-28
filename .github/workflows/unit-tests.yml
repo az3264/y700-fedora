@@ -4,9 +4,9 @@ name: Unit tests
 # Automatic coverage is split by what a test actually needs:
 #   unittest              - tests/test_*.py on a stock Ubuntu runner
 #   script-tests          - unprivileged tests/*-test.sh and tests/*-test.py
-#                           inside a Fedora 44 container
+#                           inside a Fedora 45 container
 #   privileged-tests      - root-only unit modules and disposable-container
-#                           script tests, inside a throwaway Fedora 44 Docker
+#                           script tests, inside a throwaway Fedora 45 Docker
 #   kernel-source-checks  - the six host checks on the real patched kernel tree
 #   kshim-host-tests      - the kShimC CMake host suite
 #
@@ -60,12 +60,12 @@ jobs:
   script-tests:
     name: Shell and dashed-script tests
     runs-on: ubuntu-24.04
-    # The production image is built on quay.io/fedora/fedora-bootc:44, so the
-    # scripts run on the same Fedora 44 userspace. Ubuntu 24.04 ships
+    # The production image is built on quay.io/fedora/fedora-bootc:45, so the
+    # scripts run on the same Fedora 45 userspace. Ubuntu 24.04 ships
     # libadwaita 1.5, which lacks the prefer-wide-layout property the GUI
     # AdwAlertDialog tests set, and has no /usr/bin/bootc at all.
     container:
-      image: quay.io/fedora/fedora:44
+      image: quay.io/fedora/fedora:45
       # Without --init the job container's shell is PID 1 and never reaps
       # orphans, so a child killed by a process-lifecycle test stays a zombie
       # that still answers kill -0. --init supplies a real reaper.
@@ -150,10 +150,10 @@ jobs:
             -e ARMADA_DISPOSABLE_PRIVILEGE_TEST=1 \
             -e PYTHONDONTWRITEBYTECODE=1 \
             --workdir /src \
-            quay.io/fedora/fedora:44 \
+            quay.io/fedora/fedora:45 \
             bash -lc '
               set -euo pipefail
-              # Same Fedora 44 userspace as the production image, plus the
+              # Same Fedora 45 userspace as the production image, plus the
               # root-only tooling this group needs. dnf replaces apt here, and
               # bootc supplies /usr/bin/bootc for the OCI import test.
               dnf install -y --setopt=install_weak_deps=False \

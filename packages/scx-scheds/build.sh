@@ -64,6 +64,15 @@ grep -q -- '--exclude scx_nitosis' "${SPEC}" || {
 rpmspec -P "${SPEC}" >/dev/null
 
 dnf -y builddep "${SPEC}"
+
+# Fedora 45 kernel-headers (7.3.3-300.fc45) define `__u128` in asm/sigcontext.h
+# and asm/ptrace.h, but linux/types.h only declares it under __SIZEOF_INT128__.
+# libbpf-sys 1.7.0 builds its vendored libbpf with gcc, and btf.c ->
+# sys/param.h -> signal.h -> asm/sigcontext.h ends up there without the macro,
+# so the build fails with `unknown type name '__u128'`. aarch64 always has
+# 128-bit integers, so define the macro explicitly for those C sources.
+export LIBBPF_SYS_EXTRA_CFLAGS="-D__SIZEOF_INT128__=16"
+
 anda build --rpm-builder=rpmbuild "${PKG}/pkg"
 
 cp /tmp/packages/anda-build/rpm/rpms/scx-scheds-[0-9]*.rpm /work/out/

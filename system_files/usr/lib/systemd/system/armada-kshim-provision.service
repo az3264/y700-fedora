@@ -1,0 +1,16 @@
+[Unit]
+Description=Adopt the kShimC boot_a lifecycle once the EDL inputs are present
+ConditionPathExists=/var/lib/armada/kshimc-inputs/stock-boot.img
+ConditionPathExists=/var/lib/armada/kshimc-inputs/kShimC.bin
+ConditionPathExists=!/var/lib/armada/kshimc/config.json
+After=local-fs.target var-lib-armada.mount boot.mount
+Before=armada-bootimg-sync.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/armada/armada-kshim-provision
+RemainAfterExit=yes
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=multi-user.target

@@ -103,7 +103,7 @@ jobs:
         run: >
           docker run --rm --cpus 2 --memory 2g
           -v "${GITHUB_WORKSPACE}:/src:ro" -w /src
-          -e PYTHONDONTWRITEBYTECODE=1 fedora:44
+          -e PYTHONDONTWRITEBYTECODE=1 fedora:45
           bash -lc "dnf install -y --setopt=install_weak_deps=false python3-gobject ostree btrfs-progs openssl && python3 -B tests/update-offline-image-test.py && python3 -B tests/update-offline-payload-test.py"
       - name: Check Plasma runtime tests
         run: python3 -m unittest discover -s tests -p test_plasma_runtime.py
